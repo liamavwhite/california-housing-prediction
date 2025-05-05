@@ -1,0 +1,413 @@
+---
+title: "California Housing Prediction"
+author: "Liam White"
+date: "December 8, 2024"
+output: 
+  html_document:
+    theme: journal
+    toc: TRUE
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(skimr)
+library(randomForest)
+library(xgboost)
+library(FNN)
+library(dplyr)
+library(ggplot2)
+library(e1071)
+library(caret)
+library(gbm)
+library(tidyr)
+library(ggplot2)
+library(reshape)
+```
+
+```{r, echo = F}
+housing <- read.csv("housing.csv")
+```
+
+# Table of Contents
+
+##### 1. Introduction
+
+##### 2. Data Cleaning
+
+###### --- 2.1 The Importance of Cleaning
+
+###### --- 2.2 Cleaning the California Housing Dataset
+
+##### 3. Exploratory Data Analysis
+
+###### --- 3.1 Univariate Analysis of Median House Value
+
+###### --- 3.2 Bivariate Anaysis of Median Income and Median House Value
+
+###### --- 3.3 Geographical Distribution of the sample
+
+##### 4. Data Splitting and Cross-Validation
+
+###### --- 4.1 Splitting the Data
+
+###### --- 4.2 Cross-Validation
+
+##### 5. Model Fitting
+
+###### --- 5.1 Fitting the Models
+
+###### --- 5.2 Interpretting the Results
+
+##### 6. Model Selection and Performance
+
+###### --- 6.1 Representation of Performance
+
+###### --- 6.2 Quality of Predictions
+
+##### 7. Conclusion
+
+###### --- 7.1 Results of the Five Models
+
+###### --- 7.2 Concerns, Limitations, and Next Steps
+
+
+# 1. Introduction
+
+This project focuses on predicting California housing prices using machine learning techniques. The dataset utilized for this analysis, titled "California Housing Prices," was provided by Cam Nugent on kaggle.com. It offers a detailed collection of data related to housing in California, gathered from the 1990 Census, which includes features such as location, income, housing characteristics, and proximity to the ocean. The goal of this analysis is to use these variables to develop predictive models that estimate the median housing prices across various areas in California.
+
+The dataset comprises multiple variables, including geographic data, demographic information, and housing features. Key features include $\textbf{Median House Value}$, $\textbf{Median Income}$, and other census related variables such as $\textbf{Ocean Proximity}$.
+
+The primary research question guiding this analysis is the following: 
+
+$\textit{Which machine learning model most accurately predicts median housing prices in California, and how do socio-economic factors influence these prices?}$
+
+The analysis will be conducted using a series of steps, including exploratory data analysis (EDA), data preparation, model fitting, and performance evaluation. By employing different machine learning algorithms, such as random forests, gradient boosting, and k-nearest neighbors, we aim to uncover which model performs best in predicting housing prices and understanding the influence of various factors on these prices.
+
+This project aims to provide insights into the relationship between housing prices and socio-economic factors, helping to build a deeper understanding of the housing market in California, based on data from the 1990 Census.
+
+The dataset and further details can be found at the following link: 
+
+https://www.kaggle.com/datasets/camnugent/california-housing-prices
+
+Below is an overview of all the data points by location in the raw, unedited dataset. 
+
+```{r, echo = FALSE}
+ggplot(housing, aes(x = longitude, y = latitude, color = factor(ocean_proximity))) +
+  geom_point(alpha = 0.5) +
+  labs(title = "Introductory Geographic Overview of the Dataset",
+       x = "Longitude",
+       y = "Latitude",
+       color = "Ocean Proximity") +
+  theme_minimal()
+```
+
+
+# 2. Data Cleaning
+
+## 2.1 The Importance of Cleaning
+
+Data cleaning is crucial in machine learning to ensure the accuracy and reliability of models. By removing outliers, handling missing values, and standardizing data, we ensure that the models are not influenced by inconsistencies or biases, leading to more robust and generalizable predictions.
+
+## 2.2 Cleaning the California Housing Dataset
+
+Before modeling, several data cleaning steps were necessary to prepare the dataset. The dataset contained house values capped at \$500,000, so observations with values exceeding this cap ($500,001) were removed to avoid bias. Additional steps included handling missing values by dropping incomplete rows, normalizing numeric features to a 0-1 scale, and encoding the categorical variable Ocean Proximity as a numeric factor. Finally, to reduce computation time, a random sample of 500 rows was selected for analysis and model training.
+
+```{r}
+#read in the data!
+housing <- read.csv("housing.csv")
+#Remove data points above the cap
+housing <- housing %>%
+  filter(median_house_value < 500001)
+
+#Drop missing values
+housing <- housing %>%
+  drop_na()
+
+normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+housing <- housing %>%
+  mutate(across(where(is.numeric), normalize))
+
+#Encode 'ocean_proximity'
+housing <- housing %>%
+  mutate(across(ocean_proximity, as.factor)) %>%
+  mutate(ocean_proximity = as.numeric(as.factor(ocean_proximity)))
+
+#Take a sample of 500 rows
+set.seed(1)
+random_indices <- sample(nrow(housing), 500)
+housing <- housing[random_indices, ]
+```
+
+
+# 3. Exploratory Data Analysis (EDA)
+
+In this section, we explore the dataset through various visualizations and descriptive statistics to understand the distribution of the target variable, $\textbf{Median House Value}$, and its relationship with key predictors such as median_income, ocean_proximity, and geographical attributes. This analysis helps identify trends, correlations, and potential issues in the data.
+
+## 3.1 Univariate Analysis of Median House Value
+
+The target variable, $\textbf{Median House Value}$, shows the range and distribution of house prices in California.
+
+```{r, echo = F, fig.cap = "Frequency of Median of House Value", fig.height = 3}
+ggplot(housing, aes(x = median_house_value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of Median House Value",
+       x = "Median House Value",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+The histogram reveals a right-skewed distribution, with a significant concentration of houses priced below \$250,000. The artificial cap of \$500,000 is evident as the distribution abruptly ends, justifying the removal of capped observations in the data cleaning step.
+
+## 3.2 Bivariate Analysis: Relationship Between Median Income and Median House Value
+
+Income is expected to be one of the most significant predictors of housing prices. The following scatter plot illustrates their relationship.
+
+```{r, echo = F, fig.cap = "Median Income vs. Median House Value", fig.height = 3}
+ggplot(housing, aes(x = median_income, y = median_house_value)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  labs(title = "Scatter Plot of Median House Value vs Median Income",
+       x = "Median Income (tens of thousands USD)",
+       y = "Median House Value (USD)") +
+  theme_minimal()
+```
+
+A positive correlation is observed between median_income and median_house_value. Higher incomes are associated with higher house prices, as expected. However, a cluster of data points below $300,000 suggests income disparities between regions with lower-valued homes.
+
+## 3.3 Geographical Distribution of Housing Prices
+
+The geographical distribution of housing prices is explored by plotting longitude and latitude, with colors representing median house value.
+
+```{r, echo = F, fig.cap = "Distribution of Housing Prices", fig.height = 3}
+ggplot(housing, aes(x = longitude, y = latitude, color = median_house_value)) +
+  geom_point(alpha = 0.5) +
+  scale_color_viridis_c(option = "plasma", name = "House Value") +
+  labs(title = "Geographical Distribution of Housing Prices",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal()
+```
+
+Housing prices vary by location, with coastal areas showing higher median house values. This aligns with the expectation that proximity to desirable locations, like the ocean, inflates housing prices. In addition, by showing this, we can also see that our random sample of 500 rows encompasses many different areas, ensuring there is no overt geographical bias. 
+
+# 4. Data Splitting and Cross-Validation
+
+Before building machine learning models, it's essential to split the dataset into distinct subsets for training, testing, and validation. This process ensures that the model's performance is evaluated on unseen data, providing a robust measure of its predictive ability. Additionally, cross-validation is implemented to further mitigate the risk of overfitting and underfitting.
+
+## 4.1 Splitting the Data
+
+The dataset was split 70/30, with 70% allocated to the training set and 30% to the testing set, to ensure an effective balance between model training and performance evaluation. The training set provides the model with sufficient diversity and volume to learn complex patterns and relationships in the data effectively. The testing set serves as an unbiased subset to assess the model’s ability to generalize to unseen data, offering a reliable estimate of its real-world performance.
+
+```{r}
+set.seed(1)
+train_index <- createDataPartition(housing$median_house_value, p = 0.7, list = FALSE)
+training_set <- housing[train_index, ]
+testing_set <- housing[-train_index, ]
+```
+
+## 4.2 Cross-Validation
+
+Cross-validation is a technique used to assess the reliability of a machine learning model. It involves dividing the training dataset into subsets and repeatedly training the model on different combinations of folds while validating on the remaining fold. This helps ensure that the model generalizes well to unseen data. In this project, we will use 5-fold cross-validation to have a balance of a low computation time yet robust validation.
+
+```{r, results=FALSE}
+cv_control <- trainControl(
+  method = "cv",  
+  number = 5,   
+  verboseIter = TRUE
+)
+
+# Random Forest
+set.seed(1)
+rf_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "rf", 
+  trControl = cv_control,
+  tuneLength = 5
+)
+
+# Linear Regression
+set.seed(1)
+lm_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "lm", 
+  trControl = cv_control
+)
+
+# K-Nearest Neighbors
+set.seed(1)
+knn_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "knn", 
+  trControl = cv_control,
+  tuneLength = 5
+)
+
+# Gradient Boosting Machines
+set.seed(1)
+gbm_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "gbm", 
+  trControl = cv_control,
+  verbose = FALSE
+)
+```
+
+By splitting the data and implementing cross-validation, we ensure that the models are evaluated rigorously and fairly, minimizing the risk of overestimating their performance. 
+
+# 5. Model Fitting
+
+Various machine learning models were implemented to predict California housing prices, chosen for their diverse approaches to handling relationships in data. A Linear Regression model was included as a baseline due to its simplicity, interpretability, and ability to establish a benchmark for predictive performance. It assumes a linear relationship between features and the target variable, offering insights into how more complex models compare.
+
+To capture non-linear relationships, Random Forest and Gradient Boosting Machines (GBM) were added. Random Forest is a robust ensemble method that mitigates overfitting and excels in handling interactions between variables, making it ideal for datasets with complex patterns. GBM focuses on sequentially improving predictions through additive boosting, often achieving high accuracy in regression tasks. The K-Nearest Neighbors (KNN) algorithm was included for its simplicity in predicting values based on proximity in feature space, which can be useful for localized patterns. Finally, Support Vector Machines (SVM) were chosen for their ability to model intricate non-linear relationships, offering flexibility in capturing complex data structures.
+
+## 5.1 Fitting the Models
+
+As discussed before, 5-fold cross-validation was used to tune the hyperparameters for each model and assess their performance on the training set. After identifying the best parameters, we fit the models on the full training set and evaluated them on the testing set.
+
+```{r, results=FALSE}
+# Linear Regression
+set.seed(1)
+lm_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "lm", 
+  trControl = cv_control
+)
+
+# Random Forest
+set.seed(1)
+rf_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "rf", 
+  trControl = cv_control,
+  tuneLength = 5
+)
+
+# Gradient Boosting Machine
+set.seed(1)
+gbm_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "gbm", 
+  trControl = cv_control,
+  tuneLength = 5,
+  verbose = FALSE
+)
+
+# K-Nearest Neighbors
+set.seed(1)
+knn_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "knn", 
+  trControl = cv_control,
+  tuneLength = 5
+)
+
+# Support Vector Machines
+set.seed(123)
+svm_model <- train(
+  median_house_value ~ ., 
+  data = training_set, 
+  method = "svmRadial", 
+  trControl = cv_control,
+  tuneLength = 5
+)
+```
+
+## 5.2 Interpretting the Results
+
+After fitting the models, we can output their performance metrics. They are as follows:
+
+- RMSE (Root Mean Square Error): measures the average magnitude of the prediction errors, with larger errors being penalized more heavily due to squaring. A lower RMSE indicates better predictive accuracy.
+
+- MAE (Mean Absolute Error): calculates the average of the absolute differences between predicted and actual values, treating all errors equally. Like RMSE, a smaller MAE suggests better predictions.
+
+- $R^2$: indicates how well the model explains the variance in the data. It ranges from 0 to 1, where a higher R² value shows that the model fits the data well.
+
+Below we can see how these metrics compare.
+
+```{r}
+# Predict and evaluate on the testing set
+models <- list(lm_model, rf_model, gbm_model, knn_model, svm_model)
+model_names <- c("Linear Regression", "Random Forest", "Gradient Boosting", "K-Nearest Neighbors", "Support Vector Machines")
+
+# Collect results and apply names to models
+testing_results <- lapply(models, function(model) {
+  predictions <- predict(model, newdata = testing_set)
+  data.frame(
+    RMSE = RMSE(predictions, testing_set$median_house_value),
+    MAE = MAE(predictions, testing_set$median_house_value),
+    R2 = R2(predictions, testing_set$median_house_value)
+  )
+}) %>%
+  bind_rows(.id = "Model") %>%
+  mutate(Model = model_names)
+
+#Bar chart for easy visual comparison
+testing_results_long <- testing_results %>%
+  gather(key = "Metric", value = "Value", -Model)
+ggplot(testing_results_long, aes(x = Model, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Model Comparison: RMSE, MAE, and R2", 
+       x = "Model", 
+       y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(testing_results)
+```
+
+Based on the results, we can see that Random Forest is the best model. It has the lowest RMSE and MAE, and highest $R^2$. In the next section, we will discuss the significance of this and dive deeper on why Random Forest outperformed the other models.
+
+# 6. Model Selection and Performance
+
+The Random Forest model was selected as the best-fitting model based on its superior performance in predicting housing prices and achieved the best balance between accuracy and predictive power compared to the other models.
+
+There are a couple of reasons why Random Forest could have performed the best. For one, Random Forest captures non-linear relationships between features, which is crucial in this dataset, where housing prices are influenced by many factors such as median income, geographical location, and proximity to the ocean. In addition, Random Forest can handle missing data relatively well, making it suitable for real-world datasets like the California housing data, where we already know missing values can occur.
+
+## 6.1 Representation of Performance
+
+To visualize how well the Random Forest model performed, we can plot the predicted vs. actual values of the median house prices from the testing data:
+
+```{r}
+# Generate predictions
+rf_predictions <- predict(rf_model, newdata = testing_set)
+
+# Plot actual vs predicted values
+ggplot(data = testing_set, aes(x = median_house_value, y = rf_predictions)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Random Forest: Predicted vs Actual Median House Value",
+       x = "Actual Median House Value",
+       y = "Predicted Median House Value") +
+  theme_minimal()
+```
+
+This scatter plot helps to visually assess the accuracy of the Random Forest model. The closer the points are to the red dashed line (which represents perfect predictions), the better the model's performance. We can see that the data points are relatively closely clustered around the line.
+
+## 6.2 Quality of Predictions
+
+The Random Forest model demonstrates that it effectively captures the relationships in the data. However, there are still areas for improvement, particularly in handling outliers or regions where the data is sparse. Random Forest's ability to generalize and reduce overfitting makes it a strong choice, but further tuning (e.g., optimizing the number of trees or considering different feature engineering techniques) could further improve performance.
+
+# 7. Conclusion
+
+## 7.1 Results of the Five Models
+
+The performance of the five models (Linear Regression, Random Forest, Gradient Boosting, K-Nearest Neighbors, and Support Vector Machines) was evaluated using RMSE, MAE, and $R^2$. Random Forest outperformed all other models, achieving the lowest RMSE (0.1197), MAE (0.0912), and the highest $R^2$ (0.6506), indicating it provided the most accurate predictions and explained the most variance in housing prices. It handled complex non-linear relationships effectively, which is particularly important in the California Housing dataset, where features like median income and ocean proximity influence house values in non-linear ways.
+
+On the other hand, models like K-Nearest Neighbors performed poorly, with the highest RMSE and MAE, and the lowest $R^2$ likely due to its sensitivity to noise and challenges in capturing complex data patterns. While models like Gradient Boosting and Support Vector Machines performed better than KNN, they still fell short of Random Forest in terms of accuracy and predictive power. Therefore, Random Forest is the best model for predicting California housing prices based on its ability to reduce error and handle intricate relationships in the data effectively.
+
+The Random Forest results did not surprise me, as it is known to excel in handling non-linear relationships which are prevalent in this dataset. Random Forest’s ability to manage these patterns effectively allowed it to outperform other models, validating my expectations.
+
+## 7.2 Concerns, Limitations, and Next Steps
+
+One significant limitation of this analysis is that the dataset is based on data from 1990, which may not reflect current trends in the California housing market. Since housing prices, socio-economic factors, and urban development have likely changed significantly over the past few decades, the model's predictions may not be as accurate for today's real estate market. Additionally, the dataset does not account for other potentially important variables, such as interest rates, local economic conditions, or housing policies, which could influence housing prices. These factors could lead to predictions that might not capture the full complexity of the current housing market.
+
+Furthermore, while the Random Forest model has shown strong performance, there are opportunities for improvement. For example, fine-tuning hyperparameters and incorporating more recent data could further enhance model accuracy. Future work might also involve integrating time-series data to account for trends and seasonal variations in the housing market. Despite these limitations, the analysis offers valuable insights into how socio-economic factors, such as median income and proximity to the ocean, influence housing prices in California.

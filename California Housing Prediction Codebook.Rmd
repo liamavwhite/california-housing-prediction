@@ -1,0 +1,91 @@
+---
+title: "California Housing Prediction - Codebook"
+author: "Liam White"
+date: "December 8, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(skimr)
+library(randomForest)
+library(xgboost)
+library(FNN)
+library(dplyr)
+library(ggplot2)
+library(e1071)
+library(caret)
+library(gbm)
+library(tidyr)
+library(ggplot2)
+library(reshape)
+```
+
+```{r, include=FALSE}
+#read in the data!
+housing <- read.csv("housing.csv")
+#Remove data points above the cap
+housing <- housing %>%
+  filter(median_house_value < 500001)
+
+#Drop missing values
+housing <- housing %>%
+  drop_na()
+
+normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+housing <- housing %>%
+  mutate(across(where(is.numeric), normalize))
+
+#Encode 'ocean_proximity'
+housing <- housing %>%
+  mutate(across(ocean_proximity, as.factor)) %>%
+  mutate(ocean_proximity = as.numeric(as.factor(ocean_proximity)))
+
+#Take a sample of 500 rows
+set.seed(1)
+random_indices <- sample(nrow(housing), 500)
+housing <- housing[random_indices, ]
+```
+
+
+This codebook describes the variables in the cleaned California Housing dataset used in this analysis. The data has been cleaned and prepared for machine learning models to predict median housing prices in California. This includes encoding categorical variables, handling outliers, normalizing numerical features, and reducing the rows to 500. The variables and sample size are viewable below:
+
+```{r}
+glimpse(housing)
+```
+
+More specifically, the variables are defined as follows:
+
+- median_house_value: Median value of homes in the area (normalized between 0 and 1; target variable).
+
+- median_income: Median income of households in the area (normalized between 0 and 1).
+
+- ocean_proximity: Encoded categorical variable representing proximity to the ocean, transformed numerically to align with the rest of the dataset. The values are the following:
+
+  -- 1: <1H OCEAN
+  
+  -- 2: NEAR BAY
+  
+  -- 3: NEAR OCEAN
+  
+  -- 4: INLAND
+  
+  -- 5: ISLAND
+
+- housing_median_age: Median age of the homes in the neighborhood (normalized between 0 and 1).
+
+- population: Number of people living in the area (normalized between 0 and 1).
+
+- households: Number of households in the area (normalized between 0 and 1).
+
+- total_rooms: Total number of rooms in the area (normalized between 0 and 1).
+
+- total_bedrooms: Total number of bedrooms in the area (normalized between 0 and 1)
+
+- latitude: Geographical latitude of the area (normalized between 0 and 1).
+
+- longitude: Geographical longitude of the area (normalized between 0 and 1).
+
+As discussed before and in the project, The normalization of all variables between 0 and 1 was done to help machine learning compatibility.
+
