@@ -87,8 +87,9 @@ Random Forest outperformed other models due to its strength in modeling non-line
 
 ## Files
 
-- `housing.csv`: Cleaned dataset (not included here, available on Kaggle)
-- `california_housing_analysis.Rmd`: Main R Markdown analysis file
+- `housing.csv`: Dataset used (not included here, available on Kaggle)
+- `California Housing Prediction - Liam White.Rmd`: Main R Markdown analysis file
+- `California Housing Prediction Codebook`: Codebook for variables used in main analysis file
 - `README.md`: Project summary and documentation
 
 ---
