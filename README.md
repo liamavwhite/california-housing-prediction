@@ -62,4 +62,37 @@ The goal is to determine which machine learning model most accurately predicts m
   - **MAE:** 0.0912  
   - **R²:** 0.6506  
 
-Random Forest outperformed other models due to its strength in modeling non-linear relationships and handling complex inter
+Random Forest outperformed other models due to its strength in modeling non-linear relationships and handling complex interactions.
+
+---
+
+## Visual Highlights
+
+- Scatter plot of predicted vs actual prices (Random Forest)
+- Histograms, heat maps, and spatial plots for feature insight
+- Bar chart comparing model performance across RMSE, MAE, and R²
+
+---
+
+## Limitations and Next Steps
+
+- Dataset is from 1990: results may not generalize to today's housing market.
+- Model could benefit from:
+  - Feature engineering (e.g., interaction terms, polynomial features)
+  - Ensemble stacking
+  - Larger sample sizes or full dataset use
+- Real-world application would require incorporating updated data and possibly external sources (e.g., crime rates, school quality, etc.)
+
+---
+
+## Files
+
+- `housing.csv`: Cleaned dataset (not included here, available on Kaggle)
+- `california_housing_analysis.Rmd`: Main R Markdown analysis file
+- `README.md`: Project summary and documentation
+
+---
+
+## Citation
+
+Nugent, Cam. *California Housing Prices Dataset*. Kaggle. 1990 U.S. Census.
